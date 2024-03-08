@@ -4,7 +4,6 @@
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 
 import pandas as pd
-from pandas_ods_reader import read_ods
 import numpy as np
 import matplotlib.pyplot as plt
 import json

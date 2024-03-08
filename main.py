@@ -9,28 +9,53 @@ import matplotlib.pyplot as plt
 import json
 import cv2
 
-def print_hi(name):
+
+def print_hi(name)->None:
     # Use a breakpoint in the code line below to debug your script.
     print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
 
-def readdata():
+
+def readdata(initpath) -> pd.DataFrame:
     data = []
-    with open("C:\\Users\\omara\\OneDrive - University of Vermont\\CrowdHuman_Dataset\\annotation_train.odgt") as file:
+    with open(f"{initpath}CrowdHuman_Dataset\\annotation_train.odgt") as file:
         for line in file:
             data.append(json.loads(line))
     return data
 
 
+def displayimages(df, count, initpath) -> None:
+    Hori = []
+    for i in range(count):
+        ID = df[i]['ID']
+        print(ID)
+        '''
+        try:
+            image_path = (f"{initpath}CrowdHuman_Dataset\\"
+                          f"CrowdHuman_train01\\Images\\{ID}.JPG")
+            img = cv2.imread(image_path)
+            try:
+                image_path = (f"{initpath}CrowdHuman_Dataset\\"
+                              f"CrowdHuman_train02\\Images\\{ID}.JPG")
+                img = cv2.imread(image_path)
+                try:
+                    image_path = (f"{initpath}CrowdHuman_Dataset\\"
+                                  f"CrowdHuman_train03\\Images\\{ID}.JPG")
+                    img = cv2.imread(image_path)
+                except:
+                    print("file not found in any training directoy")
+            except:
+                print("file not found in 02 training directoy")
+        except:
+            print("file not found in 01 training directoy")
+
+        Hori = np.insert(img)
+
+    cv2.imshow(f"{ID}",Hori[:])
+    cv2.waitKey(0)
+'''
+
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    df = readdata()
-
-    #print the annotation based on image
-    #print(df['ID' == "273271,1bab200041e8121f"])
-    ID = "273271,1bab200041e8121f"
-
-    image_path = (f"C:\\Users\\omara\\OneDrive - University of Vermont\\CrowdHuman_Dataset\\CrowdHuman_train01\\"
-                  f"Images\\{ID}.JPG")
-    img = cv2.imread(image_path)
-    cv2.imshow(f"{ID}", img)
-    cv2.waitKey(0)
+    initpath = "C:\\Users\\omara\\OneDrive - University of Vermont\\"
+    df = readdata(initpath)
+    displayimages(df, 5, initpath)

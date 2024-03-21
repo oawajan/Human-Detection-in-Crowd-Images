@@ -10,52 +10,79 @@ import json
 import cv2
 
 
-def print_hi(name)->None:
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
+'''
+Data Ingestion
+'''
 
 
-def readdata(initpath) -> pd.DataFrame:
+def readdata(initpath) -> list:
     data = []
-    with open(f"{initpath}CrowdHuman_Dataset\\annotation_train.odgt") as file:
+    with open(f"{initpath}annotation_train.odgt") as file:
         for line in file:
             data.append(json.loads(line))
     return data
 
 
-def displayimages(df, count, initpath) -> None:
-    Hori = []
-    for i in range(count):
-        ID = df[i]['ID']
-        print(ID)
-        '''
-        try:
-            image_path = (f"{initpath}CrowdHuman_Dataset\\"
-                          f"CrowdHuman_train01\\Images\\{ID}.JPG")
-            img = cv2.imread(image_path)
-            try:
-                image_path = (f"{initpath}CrowdHuman_Dataset\\"
-                              f"CrowdHuman_train02\\Images\\{ID}.JPG")
-                img = cv2.imread(image_path)
-                try:
-                    image_path = (f"{initpath}CrowdHuman_Dataset\\"
-                                  f"CrowdHuman_train03\\Images\\{ID}.JPG")
-                    img = cv2.imread(image_path)
-                except:
-                    print("file not found in any training directoy")
-            except:
-                print("file not found in 02 training directoy")
-        except:
-            print("file not found in 01 training directoy")
+def readimages(data) -> list:
 
-        Hori = np.insert(img)
+    images = []
+    # for i in range(len(data)):
+    for i in range(5):
+        ID = data[i]['ID']
+        paths = (f"{initpath}CrowdHuman_train01\\Images\\{ID}.JPG",
+                 f"{initpath}CrowdHuman_train02\\Images\\{ID}.JPG",
+                 f"{initpath}CrowdHuman_train03\\Images\\{ID}.JPG")
+        for path in paths:
+            img = cv2.imread(path)
+            if (img is not None):
+                images.append(img)
 
-    cv2.imshow(f"{ID}",Hori[:])
-    cv2.waitKey(0)
+    return images
+
+
 '''
+Input Image Exploration
+'''
+
+
+def displayimages(images) -> None:
+
+    for i in range(len(images)):
+        cv2.imshow(str(i), images[i])
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+
+def pixelhistogram(images)->None:
+
+    for img in images:
+        vals = img.mean(axis=2).flatten()
+        counts,bins = np.histogram(vals,range(257))
+        plt.bar(bins[:-1] - 0.5, counts, width=1, edgecolor='none')
+        plt.xlim([-0.5, 255.5])
+        plt.xlabel('Pixel Intensity')
+        plt.ylabel('Frequency')
+        plt.title(f'Pixel Intensity Histogram')
+        plt.show()
+
+
+'''
+Data Augmentation
+'''
+
+def colortransformations(images)->None:
+    i = 0
+    for img in images:
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        cv2.imshow(str(i), hsv)
+        cv2.waitKey(0)
+        i += 1
+
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    initpath = "C:\\Users\\omara\\OneDrive - University of Vermont\\"
-    df = readdata(initpath)
-    displayimages(df, 5, initpath)
+    initpath = "C:\\Users\\omara\\OneDrive - University of Vermont\\CrowdHuman_Dataset\\"
+    data = readdata(initpath)
+    images = readimages(data)
+    displayimages(images)
+    pixelhistogram(images)
+    colortransformations(images)

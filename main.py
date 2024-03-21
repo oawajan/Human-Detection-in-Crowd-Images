@@ -8,11 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import json
 import cv2
-
-
-def print_hi(name) -> None:
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
+import torch
 
 
 def readdata(initpath) -> list:

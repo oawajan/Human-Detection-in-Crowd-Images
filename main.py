@@ -99,6 +99,9 @@ if __name__ == '__main__':
     initpath = "C:\\Users\\omara\\OneDrive - University of Vermont\\CrowdHuman_Dataset\\"
     data = readdata(initpath)
     images = readimages(data)
-    displayimages(images)
+    # displayimages(images)
+    noisy_images = augment_images_with_noise(images)
+    displayimages(noisy_images, 5)  # Display augmented images
     pixelhistogram(images)
     colortransformations(images)
+    

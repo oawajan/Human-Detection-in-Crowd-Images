@@ -40,6 +40,22 @@ def readimages(data) -> list:
     return images
 
 
+
+
+'''
+Gaussian Noise Addition
+'''
+def add_gaussian_noise(image, mean=0, sigma=25):
+    height, width, _ = image.shape
+    noise = np.random.normal(mean, sigma, (height, width, 3))
+    noisy_image = np.clip(image + noise, 0, 255).astype(np.uint8)
+    return noisy_image
+
+def augment_images_with_noise(images):
+    return [add_gaussian_noise(image) for image in images]
+
+
+
 '''
 Input Image Exploration
 '''

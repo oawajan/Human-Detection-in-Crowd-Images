@@ -29,9 +29,9 @@ def readimages(data) -> list:
     # for i in range(len(data)):
     for i in range(5):
         ID = data[i]['ID']
-        paths = (f"{initpath}CrowdHuman_train01\\Images\\{ID}.JPG",
-                 f"{initpath}CrowdHuman_train02\\Images\\{ID}.JPG",
-                 f"{initpath}CrowdHuman_train03\\Images\\{ID}.JPG")
+        paths = (f"{initpath}CrowdHuman_train01/Images/{ID}.JPG",
+                 f"{initpath}CrowdHuman_train02/Images/{ID}.JPG",
+                 f"{initpath}CrowdHuman_train03/Images/{ID}.JPG")
         for path in paths:
             img = cv2.imread(path)
             if (img is not None):
@@ -53,6 +53,30 @@ def add_gaussian_noise(image, mean=0, sigma=25):
 
 def augment_images_with_noise(images):
     return [add_gaussian_noise(image) for image in images]
+
+
+'''
+Image Rotation
+'''
+
+
+def rotate_image(image, angle):
+    height, width = image.shape[:2]
+    rotation_matrix = cv2.getRotationMatrix2D((width / 2, height / 2), angle, 1)
+    rotated_image = cv2.warpAffine(image, rotation_matrix, (width, height))
+    return rotated_image
+
+def add_rotate_images(images, angle):
+    rotated_images = [rotate_image(image, angle) for image in images]
+    return rotated_images
+
+'''
+Image mirror
+'''
+
+def mirror_images(images):
+    mirrored_images = [cv2.flip(image,1) for image in images] # Flip images horizontally (along the y-axis)
+    return mirrored_images
 
 
 
@@ -93,15 +117,19 @@ def colortransformations(images)->None:
         cv2.waitKey(0)
         i += 1
 
-
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    initpath = ".\\CrowdHuman_Dataset\\"
+    initpath = "./CrowdHuman_Dataset/"
     data = readdata(initpath)
     images = readimages(data)
-    # displayimages(images)
+    #displayimages(images)
     noisy_images = augment_images_with_noise(images)
-    displayimages(noisy_images, 5)  # Display augmented images
-    pixelhistogram(images)
-    colortransformations(images)
-    
+    #displayimages(noisy_images, 5)  # Display augmented images
+    displayimages(noisy_images)
+    #pixelhistogram(images)
+    #colortransformations(images)
+    rotated_images = add_rotate_images(noisy_images, 30)
+    #displayimages(rotated_images)
+    mirrored_images = mirror_images(rotated_images)  # Apply mirror view
+    displayimages(mirrored_images)
+

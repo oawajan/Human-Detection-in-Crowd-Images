@@ -59,7 +59,6 @@ def augment_images_with_noise(images):
 Image Rotation
 '''
 
-
 def rotate_image(image, angle):
     height, width = image.shape[:2]
     rotation_matrix = cv2.getRotationMatrix2D((width / 2, height / 2), angle, 1)

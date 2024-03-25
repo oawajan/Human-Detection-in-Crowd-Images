@@ -84,6 +84,7 @@ def colortransformations(images)->None:
         cv2.waitKey(0)
         i += 1
 
+
 '''
 Image Size vs. Objects Detected
 '''

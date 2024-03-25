@@ -253,5 +253,5 @@ if __name__ == '__main__':
     #displayimages(noisy_images)  # Display augmented images
     #colortransformations(images)
     #pixelhistogram(images)
-    #testdetection(data, images)
+    testdetection(data, images)
     image_size_vs_objects(images, data)

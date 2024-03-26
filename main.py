@@ -3,20 +3,36 @@
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 import json
-import cv2
-from mtcnn.mtcnn import MTCNN as MTCNN
-from facenet_pytorch import MTCNN as torchmtcnn
 import os
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import torch.cuda
+import torch.nn as nn
+from facenet_pytorch import MTCNN as torchmtcnn
+from mtcnn.mtcnn import MTCNN as MTCNN
+from torch.utils.data import Dataset, DataLoader
+from torchvision.io import read_image
+from torch.utils.data.dataloader import default_collate
 
 
 '''
 Data Ingestion
 '''
+
+
+def collate_fn(batch):
+    filtered_batch = []
+    for item in batch:
+        if item is not None:
+            print(type(item))
+            filtered_batch.append(item)
+    return default_collate(filtered_batch)
+
+
 def readdata(initpath) -> list:
     data = []
     with open(f"{initpath}annotation_train.odgt") as file:
@@ -24,8 +40,8 @@ def readdata(initpath) -> list:
             data.append(json.loads(line))
     return data
 
-def readimages(data) -> list:
 
+def readimages(data) -> list:
     images = []
     # for i in range(len(data)):
     for i in range(5):
@@ -39,27 +55,35 @@ def readimages(data) -> list:
                 images.append(img)
     return images
 
+
 '''
 Gaussian Noise Addition
 '''
+
+
 def add_gaussian_noise(image, mean=0, sigma=25):
     height, width, _ = image.shape
     noise = np.random.normal(mean, sigma, (height, width, 3))
     noisy_image = np.clip(image + noise, 0, 255).astype(np.uint8)
     return noisy_image
 
+
 def augment_images_with_noise(images):
     return [add_gaussian_noise(image) for image in images]
+
 
 '''
 Input Image Exploration
 '''
+
+
 def displayimages(images) -> None:
 
     for i in range(len(images)):
         cv2.imshow(str(i), images[i])
         cv2.waitKey(0)
         cv2.destroyAllWindows()
+
 
 def pixelhistogram(images)->None:
 
@@ -73,9 +97,12 @@ def pixelhistogram(images)->None:
         plt.title(f'Pixel Intensity Histogram')
         plt.show()
 
+
 '''
 Data Augmentation
 '''
+
+
 def colortransformations(images)->None:
     i = 0
     for img in images:
@@ -88,6 +115,8 @@ def colortransformations(images)->None:
 '''
 Image Size vs. Objects Detected
 '''
+
+
 def image_size_vs_objects(images, data) -> None:
     sizes = [img.shape[0] * img.shape[1] for img in images]
     objects = [len(entry['gtboxes']) for entry in data[:len(images)]]
@@ -141,11 +170,13 @@ def image_size_vs_objects(images, data) -> None:
     plt.grid(True)
     plt.show()
 
+
 '''
-Detection in PreTrained models
+Detection testing in PreTrained models
 '''
 
-def detectopencv(images) -> list:
+
+def testopencv(images) -> list:
     predictions = []
     for image in images:
         face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
@@ -159,7 +190,7 @@ def detectopencv(images) -> list:
     return predictions
 
 
-def detectMTCNN(images) -> list:
+def testMTCNN(images) -> list:
     predictions = []
     model = MTCNN(min_face_size=20, scale_factor=0.709)
     for image in images:
@@ -176,8 +207,14 @@ def detectMTCNN(images) -> list:
     return predictions
 
 
-def detecttorch(images) -> list:
-    model = torchmtcnn()
+def testtorch(images) -> list:
+    print(f"GPU is available {torch.cuda.is_available()}")
+    if (torch.cuda.is_available()):
+        device = torch.device('cuda')
+    else:
+        device = torch.device('cpu')
+    print(torch.version.cuda)
+    model = torchmtcnn(device=device)
     predictions = []
     for image in images:
         faces, probs, landmarks = model.detect(image, landmarks=True)
@@ -190,6 +227,104 @@ def detecttorch(images) -> list:
         cv2.waitKey(0)
         cv2.destroyAllWindows()
     return predictions
+
+
+'''
+retraining the pytorch facenet mtcnn model
+'''
+
+
+class ImageDataset(Dataset):
+    def __init__(self, target_transform=None):
+        self.init_path = f".\\CrowdHuman_Dataset\\"
+        self.image_labels = self.read_annotations()
+
+    def __len__(self):
+        return len(self.image_labels)
+
+    def __getitem__(self, index):
+        image = self.load_image(self.image_labels[index])
+        print(self.image_labels[index]['ID'])
+        print(type(image))
+        print('-'*20)
+        return image
+
+    def read_annotations(self) -> list:
+        datafile = []
+        annotations = []
+        with open(f"{self.init_path}annotation_train.odgt") as file:
+            for line in file:
+                datafile.append(json.loads(line))
+        return datafile
+
+    def load_image(self, image_annotation):
+        ID = image_annotation['ID']
+        paths = (f"{self.init_path}CrowdHuman_train01\\Images\\{ID}.JPG",
+                 f"{self.init_path}CrowdHuman_train02\\Images\\{ID}.JPG",
+                 f"{self.init_path}CrowdHuman_train03\\Images\\{ID}.JPG")
+        try:
+            for path in paths:
+                img = read_image(path)
+                if img is not None:
+                    img = img.permute(1, 2, 0)
+                    plt.imshow(img)
+                    plt.title(ID)
+                    plt.show()
+                    print(type(img))
+                    return img
+        except Exception as e:
+            print(f"Error reading image from: {str(e)}")
+
+
+def trainMTCNN(data, images) -> list:
+
+    if (torch.cuda.is_available()):
+        print(f"GPU is available {torch.cuda.is_available()}, Version {torch.version.cuda}")
+        device = torch.device('cuda')
+    else:
+        print(f"Using CPU")
+        device = torch.device('cpu')
+    # initialize the MTCNN model and set it to use the GPU
+    model = torchmtcnn(device=device)
+    # print(model)
+    print("##################freeze pretrained model layers except  one#############################")
+    # freeze pretrained model layers
+    for name, param in torchmtcnn.named_parameters(model):
+        # print(f"name: {name}")
+        # print(f"param: {param}")
+        if 'pnet.conv1' not in name:
+            param.requires_grad = False
+        else:
+            param.requires_grad = True
+    print("##################              load dataset                #############################")
+    dataset = ImageDataset()
+    dataloader = DataLoader(dataset, batch_size=32, shuffle=True, collate_fn=collate_fn)
+
+    # define optimizer
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+
+    # loss function
+    loss_function = nn.CrossEntropyLoss()
+
+    # epoch count
+    epochs = 10
+    for epoch in range(epochs):
+        for inputs, targets in dataloader:
+            inputs, targets = inputs.to(device), targets.to(device)
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = loss_function(outputs, targets)
+
+            # Backward pass and optimize
+            loss.backward()
+            optimizer.step()
+
+        print(f"Epoch {epoch + 1}/{epochs}, Loss: {loss.item()}")
+
+
+'''
+Validate model results
+'''
 
 
 def IoU(data, predictions) -> list:
@@ -231,9 +366,9 @@ def testdetection(data,images) -> None:
     results = []
     IoUresults = []
 
-    # results.append(detectopencv(images))
-    # results.append(detectMTCNN(images))
-    # results.append(detecttorch(images))
+    # results.append(testopencv(images))
+    # results.append(testMTCNN(images))
+    #results.append(testtorch(images))
 
     for result in results:
         IoUresults.append(IoU(data, result))
@@ -248,10 +383,11 @@ if __name__ == '__main__':
     initpath = ".\\CrowdHuman_Dataset\\"
     data = readdata(initpath)
     images = readimages(data)
-    #displayimages(images)
-    #noisy_images = augment_images_with_noise(images)
-    #displayimages(noisy_images)  # Display augmented images
-    #colortransformations(images)
-    #pixelhistogram(images)
-    testdetection(data, images)
-    image_size_vs_objects(images, data)
+    # displayimages(images)
+    # noisy_images = augment_images_with_noise(images)
+    # displayimages(noisy_images)  # Display augmented images
+    # colortransformations(images)
+    # pixelhistogram(images)
+    # testdetection(data, images)
+    # image_size_vs_objects(images, data)
+    trainMTCNN(data, images)

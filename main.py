@@ -24,7 +24,7 @@ def readimages(data) -> list:
 
     images = []
     # for i in range(len(data)):
-    for i in range(5):
+    for i in range(100):
         ID = data[i]['ID']
         paths = (f"{initpath}CrowdHuman_train01\\Images\\{ID}.JPG",
                  f"{initpath}CrowdHuman_train02\\Images\\{ID}.JPG",
@@ -86,10 +86,14 @@ Image Size vs. Objects Detected
 def image_size_vs_objects(images, data) -> None:
     sizes = [img.shape[0] * img.shape[1] for img in images]
     objects = [len(entry['gtboxes']) for entry in data[:len(images)]]
+    
+    # Zip the two lists together, sort them by image size, and unzip them back
+    sorted_data = sorted(zip(sizes, objects), key=lambda x: x[0])
+    sorted_sizes, sorted_objects = zip(*sorted_data)
 
-    # Scatter Plot
+    # Scatter Plot with Ordered Data
     plt.figure(figsize=(10, 6))
-    plt.scatter(sizes, objects, color='blue')
+    plt.scatter(sorted_sizes, sorted_objects, color='blue')
     plt.title('Image Sizes vs. Number of Objects Detected')
     plt.xlabel('Image Size (pixels)')
     plt.ylabel('Number of Objects Detected')

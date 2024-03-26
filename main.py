@@ -24,7 +24,7 @@ def readimages(data) -> list:
 
     images = []
     # for i in range(len(data)):
-    for i in range(100):
+    for i in range(5):
         ID = data[i]['ID']
         paths = (f"{initpath}CrowdHuman_train01\\Images\\{ID}.JPG",
                  f"{initpath}CrowdHuman_train02\\Images\\{ID}.JPG",

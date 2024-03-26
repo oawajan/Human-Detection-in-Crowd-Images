@@ -136,14 +136,107 @@ def image_size_vs_objects(images, data) -> None:
     plt.grid(True)
     plt.show()
 
-# Press the green button in the gutter to run the script.
+import torch
+import torchvision
+from torchvision.models.detection import retinanet_resnet50_fpn
+from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+from torchvision import transforms
+
+'''
+Model Definition
+'''
+def get_model(num_classes):
+    model = retinanet_resnet50_fpn(pretrained=True)
+    in_features = model.head.classification_head.conv[0].in_channels
+    num_anchors = model.head.classification_head.num_anchors
+    model.head.classification_head = FastRCNNPredictor(in_features * num_anchors, num_classes)
+    return model
+
+data_transforms = transforms.Compose([
+    transforms.ToPILImage(),
+    transforms.Resize((800, 800)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+])
+
+from torch.utils.data import Dataset, DataLoader
+from PIL import Image
+import os
+
+
+class HumanDataset(Dataset):
+    def __init__(self, annotations, root_dir, transform=None):
+        self.annotations = annotations
+        self.root_dir = root_dir
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.annotations)
+
+    def __getitem__(self, idx):
+        img_id = self.annotations[idx]['ID']
+        img_path = os.path.join(self.root_dir, f"{img_id}.JPG")
+        image = Image.open(img_path).convert("RGB")
+        boxes = torch.as_tensor([[0, 0, 100, 100]], dtype=torch.float32)
+        labels = torch.ones((1,), dtype=torch.int64)
+        if self.transform:
+            image = self.transform(image)
+        target = {"boxes": boxes, "labels": labels}
+        print(f"Fetching item {idx} from dataset")  # Diagnostic print
+        return image, target
+
+from torch.optim import SGD
+from torch.utils.data import DataLoader
+
+'''
+Training Loop
+'''
+def train_model():
+    # Assuming your annotations and image paths are correctly set up
+    dataset = HumanDataset(annotations=data, root_dir='./CrowdHuman_Dataset/Images/', transform=data_transforms)
+    data_loader = DataLoader(dataset, batch_size=2, shuffle=True, collate_fn=lambda x: tuple(zip(*x)))
+
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
+    model = get_model(num_classes=2)
+    model.to(device)
+
+    params = [p for p in model.parameters() if p.requires_grad]
+    optimizer = SGD(params, lr=0.005, momentum=0.9, weight_decay=0.0005)
+
+    num_epochs = 10
+
+    print("Starting model training...")
+    for epoch in range(num_epochs):
+        model.train()
+        running_loss = 0.0
+        print(f"Epoch {epoch + 1}/{num_epochs}...")
+        for images, targets in data_loader:
+            print(f"  Processing a batch...")
+            images = list(image.to(device) for image in images)
+            targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
+
+            # Forward pass: Compute predicted outputs by passing inputs to the model
+            loss_dict = model(images, targets)
+
+            # Calculate the batch loss
+            losses = sum(loss for loss in loss_dict.values())
+
+            # Zero gradients, perform a backward pass, and update the weights.
+            optimizer.zero_grad()
+            losses.backward()
+            optimizer.step()
+
+            running_loss += losses.item()
+        print(f"Epoch {epoch + 1} Loss: {running_loss / len(data_loader)}")
+
 if __name__ == '__main__':
-    initpath = ".\\CrowdHuman_Dataset\\"
+    initpath = ".\\CrowdHuman_Dataset\\"  # Adjusted for Windows file path
     data = readdata(initpath)
-    images = readimages(data)
-    displayimages(images)
-    noisy_images = augment_images_with_noise(images)
-    displayimages(noisy_images)  # Display augmented images
-    colortransformations(images)
-    pixelhistogram(images)
-    image_size_vs_objects(images, data)
+    images = readimages(data, initpath)
+    # Uncomment the following lines if you wish to see the images/augmentations
+    # displayimages(images)
+    # noisy_images = augment_images_with_noise(images)
+    # displayimages(noisy_images)
+    # colortransformations(images)
+    train_model()

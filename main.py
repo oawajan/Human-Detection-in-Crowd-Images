@@ -245,9 +245,6 @@ class ImageDataset(Dataset):
 
     def __getitem__(self, index):
         image = self.load_image(self.image_labels[index])
-        print(self.image_labels[index]['ID'])
-        print(type(image))
-        print('-'*20)
         return image
 
     def read_annotations(self) -> list:
@@ -497,16 +494,15 @@ def calculate_metrics(predictions, ground_truths, iou_threshold=0.5):
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
-    # initpath = ".\\CrowdHuman_Dataset\\"
-    initpath = "/Users/odibia/Documents/AdvancedMachineLearning/PROJECT/CrowdHuman_Dataset"
+    initpath = ".\\CrowdHuman_Dataset\\"
     data = readdata(initpath)
     images = readimages(data)
-    #displayimages(images)
-    #noisy_images = augment_images_with_noise(images)
-    #displayimages(noisy_images)  # Display augmented images
-    #colortransformations(images)
-    #pixelhistogram(images)
-    testdetection(data, images)
+    # displayimages(images)
+    # noisy_images = augment_images_with_noise(images)
+    # displayimages(noisy_images)  # Display augmented images
+    # colortransformations(images)
+    # pixelhistogram(images)
+    # testdetection(data, images)
     image_size_vs_objects(images, data)
     # Load the detection model
     detection_model = load_detection_model()

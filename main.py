@@ -113,7 +113,6 @@ def colortransformations(images)->None:
 '''
 Image Size vs. Objects Detected
 '''
-=======
 def image_size_vs_objects(images, data) -> None:
     sizes = [img.shape[0] * img.shape[1] for img in images]
     objects = [len(entry['gtboxes']) for entry in data[:len(images)]]

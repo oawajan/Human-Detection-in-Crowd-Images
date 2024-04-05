@@ -147,3 +147,33 @@ if __name__ == '__main__':
     colortransformations(images)
     pixelhistogram(images)
     image_size_vs_objects(images, data)
+
+
+#######  RetinaFace Pytorch
+
+import cv2
+from matplotlib import pyplot as plt
+from retinaface.pre_trained_models import get_model
+from retinaface.utils import vis_annotations
+plt.rcParams["figure.figsize"] = (15, 15)
+# imagecv2 = cv2.imread('1.jpg')
+imagecv2 = [cv2.cvtColor(image, cv2.COLOR_BGR2RGB) for image in images]
+
+import matplotlib.pyplot as plt
+# Assuming imagecv2 is your list of arrays
+for img_array in imagecv2:
+    plt.imshow(img_array)
+    plt.show()
+displayimages(imagecv2)
+model = get_model("resnet50_2020-07-20", max_size=2048)
+
+# model.eval()
+# annotation = [model.predict_jsons(image) for image in imagecv2]
+# annotation= model.predict_jsons(imagecv2)
+annotations=[]
+for imag in imagecv2:
+    annotation = model.predict_jsons(imag)
+    annotations.append(annotation)
+    plt.show()
+##
+imagecv2 = [np.asarray(img, dtype=np.uint8) for img in imagecv2]

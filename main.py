@@ -1,93 +1,102 @@
-# This is a sample Python script.
-
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
-
+import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import json
 import cv2
+import torch
+import torchvision
+from torchvision.models.detection import RetinaNet
+from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
+from torch.utils.data import Dataset, DataLoader
+from torchvision.transforms import functional as F
 
 '''
 Data Ingestion
 '''
-def readdata(initpath) -> list:
+# Function to read .odgt data file line by line and parse JSON objects
+def readdata(initpath, filename) -> list:
     data = []
-    with open(f"{initpath}annotation_train.odgt") as file:
+    filepath = os.path.join(initpath, filename)
+    with open(filepath, 'r') as file:
         for line in file:
-            data.append(json.loads(line))
+            data.append(json.loads(line.strip()))  # Parse each line separately and append to list
     return data
 
-def readimages(data) -> list:
-
+# Function to load images based on annotation data
+def readimages(data, initpath) -> list:
     images = []
-    # for i in range(len(data)):
-    for i in range(5):
+    for i in range(min(5, len(data))):  # Process a maximum of 5 images for demonstration
         ID = data[i]['ID']
-        paths = (f"{initpath}CrowdHuman_train01\\Images\\{ID}.JPG",
-                 f"{initpath}CrowdHuman_train02\\Images\\{ID}.JPG",
-                 f"{initpath}CrowdHuman_train03\\Images\\{ID}.JPG")
-        for path in paths:
-            img = cv2.imread(path)
-            if (img is not None):
-                images.append(img)
+        img = None
+        for folder in ["Images", "Images 2", "Images 3"]:
+            img_path = os.path.join(initpath, folder, f"{ID}.JPG")
+            if os.path.exists(img_path):
+                img = cv2.imread(img_path)
+                break
+        if img is not None:
+            images.append(img)
+        else:
+            print(f"Image {ID} not found in any directory.")
     return images
 
 '''
 Gaussian Noise Addition
 '''
+# Adds Gaussian noise to an image
 def add_gaussian_noise(image, mean=0, sigma=25):
-    height, width, _ = image.shape
-    noise = np.random.normal(mean, sigma, (height, width, 3))
-    noisy_image = np.clip(image + noise, 0, 255).astype(np.uint8)
+    height, width, _ = image.shape  # Get dimensions of the image
+    noise = np.random.normal(mean, sigma, (height, width, 3))  # Generate Gaussian noise
+    noisy_image = np.clip(image + noise, 0, 255).astype(np.uint8)  # Add noise and clip the image pixel values
     return noisy_image
 
+# Applies Gaussian noise to each image in a list
 def augment_images_with_noise(images):
     return [add_gaussian_noise(image) for image in images]
 
 '''
 Input Image Exploration
 '''
+# Displays each image in a list
 def displayimages(images) -> None:
-
     for i in range(len(images)):
-        cv2.imshow(str(i), images[i])
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+        cv2.imshow(str(i), images[i])  # Display image in a window
+        cv2.waitKey(0)  # Wait for a key press to proceed
+        cv2.destroyAllWindows()  # Close the window
 
-def pixelhistogram(images)->None:
-
+# Generates and displays a histogram of pixel intensities for each image
+def pixelhistogram(images) -> None:
     for img in images:
-        vals = img.mean(axis=2).flatten()
-        counts,bins = np.histogram(vals,range(257))
-        plt.bar(bins[:-1] - 0.5, counts, width=1, edgecolor='none')
-        plt.xlim([-0.5, 255.5])
-        plt.xlabel('Pixel Intensity')
-        plt.ylabel('Frequency')
-        plt.title(f'Pixel Intensity Histogram')
-        plt.show()
+        vals = img.mean(axis=2).flatten()  # Compute the mean of pixel intensities
+        counts, bins = np.histogram(vals, range(257))  # Generate histogram data
+        plt.bar(bins[:-1] - 0.5, counts, width=1, edgecolor='none')  # Create a bar plot
+        plt.xlim([-0.5, 255.5])  # Set x-axis limits
+        plt.xlabel('Pixel Intensity')  # Set x-axis label
+        plt.ylabel('Frequency')  # Set y-axis label
+        plt.title('Pixel Intensity Histogram')  # Set title
+        plt.show()  # Display the plot
 
 '''
 Data Augmentation
 '''
-def colortransformations(images)->None:
-    i = 0
-    for img in images:
-        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        cv2.imshow(str(i), hsv)
-        cv2.waitKey(0)
-        i += 1
+# Applies and displays a color transformation (BGR to HSV) for each image
+def colortransformations(images) -> None:
+    for i, img in enumerate(images):
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)  # Convert BGR image to HSV format
+        cv2.imshow(str(i), hsv)  # Display the transformed image
+        cv2.waitKey(0)  # Wait for a key press
+        cv2.destroyAllWindows()  # Close the display window
 
 '''
 Image Size vs. Objects Detected
 '''
+# Analyzes the relationship between image sizes and the number of objects detected
 def image_size_vs_objects(images, data) -> None:
-    sizes = [img.shape[0] * img.shape[1] for img in images]
-    objects = [len(entry['gtboxes']) for entry in data[:len(images)]]
+    sizes = [img.shape[0] * img.shape[1] for img in images]  # Calculate the size of each image
+    objects = [len(entry['gtboxes']) for entry in data[:len(images)]]  # Count objects detected in each image
 
-    # Scatter Plot
+    # Generate various plots to visualize the relationship between image size and objects detected
     plt.figure(figsize=(10, 6))
     plt.scatter(sizes, objects, color='blue')
     plt.title('Image Sizes vs. Number of Objects Detected')
@@ -96,29 +105,19 @@ def image_size_vs_objects(images, data) -> None:
     plt.grid(True)
     plt.show()
 
-    # Correlation Coefficient
     correlation_matrix = np.corrcoef(sizes, objects)
     correlation_coefficient = correlation_matrix[0, 1]
-
-    # Correlation Coefficient Plot
     plt.figure(figsize=(10, 6))
     plt.scatter(sizes, objects, color='red')
-    plt.title(f'Image Sizes vs. Number of Objects Detected\nCorrelation Coefficient: {correlation_coefficient:.3f}')
+    plt.title(f'Correlation Coefficient: {correlation_coefficient:.3f}')
     plt.xlabel('Image Size (pixels)')
     plt.ylabel('Number of Objects Detected')
     plt.grid(True)
     plt.show()
 
-    # Data for Violin Plot
-    df = pd.DataFrame({
-        'Image Size': sizes,
-        'Number of Objects Detected': objects
-    })
-
-    # Violin plot
-    plt.figure(figsize=(10, 6))
+    df = pd.DataFrame({'Image Size': sizes, 'Number of Objects Detected': objects})
     sns.violinplot(x='Image Size', y='Number of Objects Detected', data=df)
-    plt.title('Distribution of Number of Objects Detected Across Image Sizes')
+    plt.title('Distribution Across Image Sizes')
     plt.xlabel('Image Size (pixels)')
     plt.ylabel('Number of Objects Detected')
     plt.xticks(rotation=90)
@@ -126,117 +125,107 @@ def image_size_vs_objects(images, data) -> None:
     plt.tight_layout()
     plt.show()
 
-    # Heatmap
     plt.figure(figsize=(10, 6))
-    plt.hexbin(sizes, objects, gridsize=30, mincnt=1)
+    plt.hexbin(sizes, objects, gridsize=30, cmap='Blues')
     plt.colorbar(label='Count in bin')
-    plt.title('Density of Objects Detected vs. Image Size')
+    plt.title('Density vs. Image Size')
     plt.xlabel('Image Size (pixels)')
     plt.ylabel('Number of Objects Detected')
     plt.grid(True)
     plt.show()
 
-import torch
-import torchvision
-from torchvision.models.detection import retinanet_resnet50_fpn
-from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
-from torchvision import transforms
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-'''
-Model Definition
-'''
-def get_model(num_classes):
-    model = retinanet_resnet50_fpn(pretrained=True)
-    in_features = model.head.classification_head.conv[0].in_channels
-    num_anchors = model.head.classification_head.num_anchors
-    model.head.classification_head = FastRCNNPredictor(in_features * num_anchors, num_classes)
-    return model
-
-data_transforms = transforms.Compose([
-    transforms.ToPILImage(),
-    transforms.Resize((800, 800)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-])
-
-from torch.utils.data import Dataset, DataLoader
-from PIL import Image
-import os
-
-
-class HumanDataset(Dataset):
-    def __init__(self, annotations, root_dir, transform=None):
-        self.annotations = annotations
-        self.root_dir = root_dir
+class CustomDataset(Dataset):
+    def __init__(self, root, annotations_file, transform=None):
+        self.root = root
+        with open(os.path.join(root, annotations_file), 'r') as f:
+            self.annotations = [json.loads(line.strip()) for line in f]
         self.transform = transform
+
+    def __getitem__(self, idx):
+        annotation = self.annotations[idx]
+        img_id = annotation['ID'].replace(',', '') + '.JPG'
+        img_path = os.path.join(self.root, img_id)
+        img = cv2.imread(img_path)
+
+        if img is None:
+            print(f"Warning: Image {img_id} not found or cannot be opened.")
+            return None  # Return None if image cannot be loaded
+
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        boxes = []
+        labels = []
+        for box in annotation['gtboxes']:
+            if box['tag'] == 'person':
+                xmin = box['fbox'][0]
+                ymin = box['fbox'][1]
+                xmax = xmin + box['fbox'][2]
+                ymax = ymin + box['fbox'][3]
+                boxes.append([xmin, ymin, xmax, ymax])
+                labels.append(1)
+
+        boxes = torch.as_tensor(boxes, dtype=torch.float32)
+        labels = torch.as_tensor(labels, dtype=torch.int64)
+        targets = {'boxes': boxes, 'labels': labels}
+
+        if self.transform:
+            img = self.transform(img)
+
+        return img, targets
 
     def __len__(self):
         return len(self.annotations)
 
-    def __getitem__(self, idx):
-        img_id = self.annotations[idx]['ID']
-        img_path = os.path.join(self.root_dir, f"{img_id}.JPG")
-        image = Image.open(img_path).convert("RGB")
-        boxes = torch.as_tensor([[0, 0, 100, 100]], dtype=torch.float32)
-        labels = torch.ones((1,), dtype=torch.int64)
-        if self.transform:
-            image = self.transform(image)
-        target = {"boxes": boxes, "labels": labels}
-        print(f"Fetching item {idx} from dataset")  # Diagnostic print
-        return image, target
+def get_data_loaders(root, annotations_file, transform, batch_size=2):
+    dataset = CustomDataset(root, annotations_file, transform=transform)
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+    return data_loader
 
-from torch.optim import SGD
-from torch.utils.data import DataLoader
+def collate_fn(batch):
+    batch = list(filter(lambda x: x is not None, batch))  # Filter out None values
+    return torch.utils.data.dataloader.default_collate(batch)
 
-'''
-Training Loop
-'''
-def train_model():
-    # Assuming your annotations and image paths are correctly set up
-    dataset = HumanDataset(annotations=data, root_dir='./CrowdHuman_Dataset/Images/', transform=data_transforms)
-    data_loader = DataLoader(dataset, batch_size=2, shuffle=True, collate_fn=lambda x: tuple(zip(*x)))
-
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-
-    model = get_model(num_classes=2)
+def create_model(num_classes):
+    backbone = resnet_fpn_backbone('resnet50', pretrained=True)
+    model = RetinaNet(backbone, num_classes=num_classes)
     model.to(device)
+    return model
 
-    params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = SGD(params, lr=0.005, momentum=0.9, weight_decay=0.0005)
-
-    num_epochs = 10
-
-    print("Starting model training...")
+def train_model(model, data_loader, optimizer, num_epochs):
+    model.train()
     for epoch in range(num_epochs):
-        model.train()
-        running_loss = 0.0
-        print(f"Epoch {epoch + 1}/{num_epochs}...")
         for images, targets in data_loader:
-            print(f"  Processing a batch...")
-            images = list(image.to(device) for image in images)
+            images = list(img.to(device) for img in images)
             targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
-
-            # Forward pass: Compute predicted outputs by passing inputs to the model
             loss_dict = model(images, targets)
-
-            # Calculate the batch loss
             losses = sum(loss for loss in loss_dict.values())
 
-            # Zero gradients, perform a backward pass, and update the weights.
             optimizer.zero_grad()
             losses.backward()
             optimizer.step()
+        print(f'Epoch {epoch+1}/{num_epochs}, Loss: {losses.item()}')
 
-            running_loss += losses.item()
-        print(f"Epoch {epoch + 1} Loss: {running_loss / len(data_loader)}")
+def main():
+    train_dir = './CrowdHuman_Dataset'
+    train_annotation = 'annotation_train.odgt'
+    num_classes = 2  # Background and person
+
+    data_loader = get_data_loaders(train_dir, train_annotation, transform=F.to_tensor)
+    model = create_model(num_classes)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
+
+    train_model(model, data_loader, optimizer, 10)
 
 if __name__ == '__main__':
-    initpath = ".\\CrowdHuman_Dataset\\"  # Adjusted for Windows file path
-    data = readdata(initpath)
-    images = readimages(data, initpath)
-    # Uncomment the following lines if you wish to see the images/augmentations
-    # displayimages(images)
-    # noisy_images = augment_images_with_noise(images)
-    # displayimages(noisy_images)
-    # colortransformations(images)
-    train_model()
+    initpath = "./CrowdHuman_Dataset"  # Define the path to the dataset
+    data = readdata(initpath, "annotation_train.odgt")  # Read data from the annotation file
+    images = readimages(data, initpath)  # Load images based on the annotations
+    displayimages(images)  # Display the images
+    noisy_images = augment_images_with_noise(images)  # Apply noise to images
+    displayimages(noisy_images)  # Display noisy images
+    colortransformations(images)  # Apply and display color transformations
+    pixelhistogram(images)  # Display pixel histograms
+    image_size_vs_objects(images, data)  # Analyze image size vs objects detected
+    main()

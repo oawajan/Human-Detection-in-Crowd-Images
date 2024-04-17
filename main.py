@@ -47,6 +47,34 @@ def add_gaussian_noise(image, mean=0, sigma=25):
 def augment_images_with_noise(images):
     return [add_gaussian_noise(image) for image in images]
 
+
+'''
+Image Rotation
+'''
+
+
+def rotate_image(image, angle):
+    height, width = image.shape[:2]
+    rotation_matrix = cv2.getRotationMatrix2D((width / 2, height / 2), angle, 1)
+    rotated_image = cv2.warpAffine(image, rotation_matrix, (width, height))
+    return rotated_image
+
+
+def add_rotate_images(images, angle):
+    rotated_images = [rotate_image(image, angle) for image in images]
+    return rotated_images
+
+
+'''
+Image mirror
+'''
+
+def mirror_images(images):
+    mirrored_images = [cv2.flip(image,1) for image in images] # Flip images horizontally (along the y-axis)
+    return mirrored_images
+
+
+
 '''
 Input Image Exploration
 '''

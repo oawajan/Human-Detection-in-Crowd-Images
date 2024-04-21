@@ -205,3 +205,134 @@ for imag in imagecv2:
     plt.show()
 ##
 imagecv2 = [np.asarray(img, dtype=np.uint8) for img in imagecv2]
+
+
+
+###########################################################################
+###########################################################################
+##################################### NN MLP###############################
+
+import os
+import cv2
+import numpy as np
+from sklearn.model_selection import train_test_split
+
+# Function to extract faces from annotation
+def extract_faces(annotation):
+    faces = []
+    for gtbox in annotation['gtboxes']:
+        if gtbox['tag'] == 'person':
+            faces.append(gtbox['hbox'])  # Use 'hbox' for face bounding box
+    return faces
+
+# Function to prepare dataset
+def prepare_dataset(annotation, image_folder, target_size=(100, 100), test_size=0.2, random_state=42):
+    X = []  # Resized images
+    Y = []  # Adjusted bounding box coordinates (x, y, width, height)
+
+    for ann in annotation:
+        image_id = ann['ID']
+        for folder_name in ["CrowdHuman_train01", "CrowdHuman_train02", "CrowdHuman_train03"]:
+            folder_path = os.path.join(image_folder, folder_name)
+            if os.path.isdir(folder_path):
+                image_path = os.path.join(folder_path, f"{image_id}.JPG")
+                if os.path.isfile(image_path):
+                    image = cv2.imread(image_path)
+                    if image is not None:
+                        # Resize image to target size
+                        image_resized = cv2.resize(image, target_size)
+                        # Extract bounding boxes for faces
+                        faces = extract_faces(ann)
+                        if faces:
+                            for face in faces:
+                                # Extract coordinates of the bounding box
+                                x, y, w, h = face
+                                # Scale bounding box coordinates to match resized image
+                                x_scaled = int(x * target_size[0] / image.shape[1])
+                                y_scaled = int(y * target_size[1] / image.shape[0])
+                                w_scaled = int(w * target_size[0] / image.shape[1])
+                                h_scaled = int(h * target_size[1] / image.shape[0])
+                                # Append resized image and adjusted bounding box to the dataset
+                                X.append(image_resized)
+                                Y.append([x_scaled, y_scaled, w_scaled, h_scaled])
+            else:
+                print(f"Folder '{folder_name}' not found for image: {image_id}")
+
+    # Split the dataset into training and test sets
+    X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=test_size, random_state=random_state)
+
+    return (X_train, y_train), (X_test, y_test)
+
+# Load annotations and prepare dataset
+annotation_path = "C:/Users/Sepi/Downloads/ML/CrowdHuman_Dataset/annotation_train.odgt"
+image_folder = "C:/Users/Sepi/Downloads/ML/CrowdHuman_Dataset"
+annotations = read_annotation(annotation_path)
+(X_train, y_train), (X_test, y_test) = prepare_dataset(annotations, image_folder)
+
+# Convert lists to numpy arrays
+X_train = np.array(X_train)
+y_train = np.array(y_train)
+X_test = np.array(X_test)
+y_test = np.array(y_test)
+
+# Check if datasets are empty
+if len(X_train) == 0 or len(y_train) == 0 or len(X_test) == 0 or len(y_test) == 0:
+    print("Dataset is empty.")
+else:
+    print("Datasets prepared successfully.")
+
+
+# Ctreating the model and model fitting
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras import layers, models
+
+def create_mlp_model(input_shape):
+    model = models.Sequential([
+        layers.Flatten(input_shape=input_shape),
+        layers.Dense(200, activation='relu'),
+        # layers.Dense(200, activation='relu'),
+        # layers.Dense(200, activation='relu'),
+        layers.Dense(120, activation='relu'),
+        layers.Dense(4)  # Output layer with 4 units for bounding box coordinates (x, y, width, height)
+    ])
+    return model
+
+# Create the model
+input_shape = X_train[0].shape  # Input shape is the shape of the resized images
+mlp_model = create_mlp_model(input_shape)
+
+# Compile the model
+mlp_model.compile(optimizer='adam', loss='mean_squared_error')
+
+# Print model summary
+mlp_model.summary()
+
+
+X_train = np.array(X_train)
+y_train = np.array(y_train)
+X_test = np.array(X_test)
+y_test = np.array(y_test)
+# Train the model
+mlp_model.fit(X_train, y_train, epochs=10, batch_size=32, validation_split=0.2)
+
+# Testing the model on a specific image
+# Reshape the test image to match the input shape expected by the model
+
+test_image = X_test[200].reshape(1, *input_shape)
+
+# Get the model's prediction for the test image
+predicted_bbox = mlp_model.predict(test_image)
+
+# Extract predicted bounding box coordinates and dimensions
+x_pred, y_pred, w_pred, h_pred = predicted_bbox[0]
+
+# Plot the original image
+plt.imshow(X_test[200])
+plt.axis('off')
+
+# Plot the predicted bounding box
+plt.gca().add_patch(plt.Rectangle((x_pred, y_pred), w_pred, h_pred, edgecolor='r', facecolor='none'))
+
+plt.show()
+

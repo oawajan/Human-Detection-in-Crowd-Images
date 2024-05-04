@@ -316,6 +316,36 @@ y_test = np.array(y_test)
 # Train the model
 mlp_model.fit(X_train, y_train, epochs=10, batch_size=32, validation_split=0.2)
 
+#####################################################################################
+############################################PCA#######################################
+######################################################################################
+from sklearn.decomposition import PCA
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras import layers, models
+ 
+def create_mlp_model(input_shape):
+    model = models.Sequential([
+        layers.Flatten(input_shape=input_shape),
+        # layers.Dense(500, activation='relu'),
+        # layers.Dense(200, activation='relu'),
+        layers.Dense(50, activation='relu'),
+        layers.Dense(4, activation='linear')  # 4 neurons for 4 outputs# Output layer with 4 units for bounding box coordinates (x, y, width, height)
+    ])
+    return model
+ 
+# Create the model
+ 
+# Apply PCA for dimensionality reduction
+pca = PCA(n_components=200)  # Specify the number of components (e.g., 50)
+X_train_pca = pca.fit_transform(X_train.reshape(X_train.shape[0], -1))
+X_test_pca = pca.transform(X_test.reshape(X_test.shape[0], -1))
+ 
+# Reshape PCA-transformed data back to the original shape
+input_shape_pca = X_train_pca.shape[1:]
+X_train_pca = X_train_pca.reshape(X_train.shape[0], *input_shape_pca)
+X_test_pca = X_test_pca.reshape(X_test.shape[0], *input_shape_pca)
+########################################################################################
 # Testing the model on a specific image
 # Reshape the test image to match the input shape expected by the model
 

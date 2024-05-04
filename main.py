@@ -319,20 +319,28 @@ mlp_model.fit(X_train, y_train, epochs=10, batch_size=32, validation_split=0.2)
 # Testing the model on a specific image
 # Reshape the test image to match the input shape expected by the model
 
-test_image = X_test[200].reshape(1, *input_shape)
+# Choose the indices of the test images you want to visualize
+test_indices = [200, 201, 202, 203, 204, 205, 219, 220, 221, 222, 223, 224]  # Update with the indices you want to test
+ 
+# Iterate through the selected test indices
+for idx in test_indices:
+    # Reshape the test image to match the input shape expected by the model
+    test_image = X_test_pca[idx].reshape(1, *input_shape_pca)
+ 
+    # Get the model's prediction for the test image
+    predicted_bbox = mlp_model_pca.predict(test_image)
+ 
+    # Extract predicted bounding box coordinates and dimensions
+    x_pred, y_pred, w_pred, h_pred = predicted_bbox[0]
+ 
+    # Plot the original image
+    plt.imshow(X_test[idx])
+    plt.axis('off')
+ 
+    # Plot the predicted bounding box
+    plt.gca().add_patch(plt.Rectangle((x_pred, y_pred), w_pred, h_pred, edgecolor='r', facecolor='none'))
+ 
+    plt.show()
 
-# Get the model's prediction for the test image
-predicted_bbox = mlp_model.predict(test_image)
-
-# Extract predicted bounding box coordinates and dimensions
-x_pred, y_pred, w_pred, h_pred = predicted_bbox[0]
-
-# Plot the original image
-plt.imshow(X_test[200])
-plt.axis('off')
-
-# Plot the predicted bounding box
-plt.gca().add_patch(plt.Rectangle((x_pred, y_pred), w_pred, h_pred, edgecolor='r', facecolor='none'))
-
-plt.show()
+has context menu
 

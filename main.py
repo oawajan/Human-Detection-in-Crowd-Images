@@ -2,16 +2,13 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import json
-import cv2
 import os
 import seaborn as sns
 import torch
 import torch.nn as nn
-import torch.nn.functional as nnF  # Alias for torch.nn.functional to avoid conflict with torchvision.transforms.functional
-from torchvision.transforms import functional as TVF  # Alias for torchvision.transforms.functional
-from torchvision.models.detection import fasterrcnn_resnet50_fpn, FasterRCNN_ResNet50_FPN_Weights
-from torchvision.ops import nms
-from torchvision.ops import box_iou
+from torchvision import transforms
+from torchvision.io import read_image
+from torchvision.transforms import Resize
 
 # Data Ingestion
 def readdata(initpath) -> list:
@@ -22,7 +19,7 @@ def readdata(initpath) -> list:
             data.append(json.loads(line))
     return data
 
-def readimages(data) -> list:
+def readimages(data, initpath) -> list:
     """Loads images based on the IDs found in the data, from three different directories."""
     images = []
     for i in range(5):  # Limit to first 5 entries for example
@@ -31,17 +28,24 @@ def readimages(data) -> list:
                  f"{initpath}/Images 2/{ID}.JPG",
                  f"{initpath}/Images 3/{ID}.JPG")
         for path in paths:
-            img = cv2.imread(path)
-            if img is not None:
+            if os.path.exists(path):  # Fixed the variable name from img to path
+                img = read_image(path)
+                img = Resize((224, 224))(img)
+                img = img.float()  # Convert input tensor to float32
+                img = img.unsqueeze(0)
                 images.append(img)
     return images
 
 # Gaussian Noise Addition
 def add_gaussian_noise(image, mean=0, sigma=25):
     """Adds Gaussian noise to an image."""
+    # Convert tensor back to numpy array for processing (assuming image is a tensor)
+    image = image.squeeze(0).permute(1, 2, 0).numpy()
     height, width, _ = image.shape
     noise = np.random.normal(mean, sigma, (height, width, 3))
     noisy_image = np.clip(image + noise, 0, 255).astype(np.uint8)
+    # Convert back to tensor
+    noisy_image = torch.from_numpy(noisy_image).permute(2, 0, 1).unsqueeze(0)
     return noisy_image
 
 def augment_images_with_noise(images):
@@ -52,13 +56,17 @@ def augment_images_with_noise(images):
 def displayimages(images) -> None:
     """Displays images one at a time."""
     for i, image in enumerate(images):
-        cv2.imshow(f'Image {i}', image)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+        # Convert tensor to numpy array for display
+        image = image.squeeze(0).permute(1, 2, 0).numpy()
+        plt.imshow(image)
+        plt.title(f'Image {i}')
+        plt.show()
 
 def pixelhistogram(images) -> None:
     """Displays a histogram of pixel intensities for each image."""
     for img in images:
+        # Convert tensor to numpy array for histogram calculation
+        img = img.squeeze(0).permute(1, 2, 0).numpy()
         vals = img.mean(axis=2).flatten()
         counts, bins = np.histogram(vals, range(257))
         plt.bar(bins[:-1] - 0.5, counts, width=1, edgecolor='none')
@@ -72,14 +80,16 @@ def pixelhistogram(images) -> None:
 def colortransformations(images) -> None:
     """Converts images to HSV color space and displays them."""
     for i, img in enumerate(images):
-        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        cv2.imshow(f'HSV Image {i}', hsv)
-        cv2.waitKey(0)
+        # No need to convert to OpenCV format if already tensors
+        hsv = transforms.ColorJitter(hue=0.1, saturation=0.1, brightness=0.1)(img)
+        plt.imshow(hsv.squeeze(0).permute(1, 2, 0).numpy())
+        plt.title(f'HSV Image {i}')
+        plt.show()
 
 # Image Size vs. Objects Detected
 def image_size_vs_objects(images, data) -> None:
     """Analyzes the relationship between image size and the number of objects detected."""
-    sizes = [img.shape[0] * img.shape[1] for img in images]
+    sizes = [img.shape[1] * img.shape[2] for img in images]  # Assuming tensor shape is (channels, height, width)
     objects = [len(entry['gtboxes']) for entry in data[:len(images)]]
 
     plt.figure(figsize=(10, 6))
@@ -122,85 +132,100 @@ def image_size_vs_objects(images, data) -> None:
     plt.grid(True)
     plt.show()
 
-# Full Body Detection Enhancements
-def load_detection_model():
-    """Loads a pre-trained Faster R-CNN model with ResNet50 backbone."""
-    weights = FasterRCNN_ResNet50_FPN_Weights.DEFAULT
-    model = fasterrcnn_resnet50_fpn(weights=weights)
-    model.eval()
-    return model
+# Full Body Detection with MLP
+class MLP(nn.Module):
+    """Defines a simple Multilayer Perceptron with three linear layers and ReLU activations."""
 
-def apply_nms(orig_prediction, iou_thresh=0.3):
-    """Applies Non-Maximum Suppression to filter predictions based on IoU threshold."""
-    boxes = orig_prediction['boxes'].clone().detach()
-    scores = orig_prediction['scores'].clone().detach()
-    keep = nms(boxes, scores, iou_thresh)
-    final_prediction = {
-        'boxes': boxes[keep].numpy(),
-        'scores': scores[keep].numpy(),
-    }
-    return final_prediction
+    def __init__(self, input_dim, hidden_dim, output_dim):
+        super(MLP, self).__init__()
+        self.layers = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, output_dim)
+        )
 
-def detect_full_body_nms(images, model, score_thresh=0.8, iou_thresh=0.5):
-    """Detects full body using a pre-trained model and applies NMS."""
+        # Explicitly set the data type of the linear layers' weights
+        for layer in self.layers:
+            if isinstance(layer, nn.Linear):
+                layer.weight.data = layer.weight.data.float()  # Convert weights to float
+
+    def forward(self, x):
+        return self.layers(x)
+
+def initialize_mlp(input_dim, hidden_dim, output_dim):
+    """Initializes the MLP model with specified dimensions."""
+    mlp_model = MLP(input_dim, hidden_dim, output_dim)
+    return mlp_model
+
+def detect_full_body_mlp(images, model, threshold=0.5):
+    """Detects full human bodies using the MLP model."""
     predictions = []
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
-    with torch.no_grad():  # Disable gradient tracking
+    with torch.no_grad():
         for image in images:
-            image_tensor = TVF.to_tensor(image).unsqueeze(0).to(device)
-            pred = model(image_tensor)
-            pred_conf = pred[0]['scores'] > score_thresh
-            boxes = pred[0]['boxes'][pred_conf].to('cpu')
-            scores = pred[0]['scores'][pred_conf].to('cpu')
-            final_pred = apply_nms({'boxes': boxes, 'scores': scores}, iou_thresh)
-            predictions.append(final_pred)
+            # No need to convert image to tensor, as it's already a tensor
+            pred = model(image)
+            # Assuming output is (x1, y1, x2, y2)
+            pred_boxes = pred[0]
+            # Apply threshold for detection
+            if pred_boxes[0].item() > threshold:  # Extract the item and compare
+                predictions.append(pred_boxes.cpu().numpy())
+            else:
+                predictions.append(None)
     return predictions
 
-def visualize_detections(images, predictions):
-    """Visualizes the detection results on the images."""
-    for i, img in enumerate(images):
-        img_copy = img.copy()
-        for box, score in zip(predictions[i]['boxes'], predictions[i]['scores']):
-            x1, y1, x2, y2 = box.astype(int)
-            label = f"{score:.2f}"
-            cv2.rectangle(img_copy, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            cv2.putText(img_copy, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
-        cv2.imshow(f'Image {i} with Full Body Detections', img_copy)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+def calculate_iou(box1, box2):
+    """Calculates the Intersection over Union (IoU) between two bounding boxes."""
+    # Convert boxes to format (x1, y1, x2, y2)
+    box1 = [box1[0], box1[1], box1[0] + box1[2], box1[1] + box1[3]]
+    box2 = [box2[0], box2[1], box2[0] + box2[2], box2[1] + box2[3]]
 
-# Evaluation of the Detection Model
-def calculate_metrics(predictions, ground_truths, iou_threshold=0.5):
-    """Calculates precision, recall, and F1-score for the detection results."""
+    # Determine the coordinates of the intersection rectangle
+    x_left = max(box1[0], box2[0])
+    y_top = max(box1[1], box2[1])
+    x_right = min(box1[2], box2[2])
+    y_bottom = min(box1[3], box2[3])
+
+    # If the intersection is non-positive (no intersection), return 0
+    if x_right < x_left or y_bottom < y_top:
+        return 0.0
+
+    # Calculate the area of intersection rectangle
+    intersection_area = (x_right - x_left) * (y_bottom - y_top)
+
+    # Calculate the area of both the prediction and ground-truth rectangles
+    box1_area = (box1[2] - box1[0]) * (box1[3] - box1[1])
+    box2_area = (box2[2] - box2[0]) * (box2[3] - box2[1])
+
+    # Calculate the Union area
+    union_area = box1_area + box2_area - intersection_area
+
+    # Calculate the IoU
+    iou = intersection_area / union_area
+    return iou
+
+def evaluate_mlp_performance(predictions, ground_truth_boxes, threshold=0.5):
+    """Evaluates the performance of the MLP model."""
     true_positives = 0
     false_positives = 0
     false_negatives = 0
 
-    for pred, gt in zip(predictions, ground_truths):
-        gt_boxes = torch.tensor([box['hbox'] for box in gt])
-        pred_boxes = torch.tensor(pred['boxes'])
-        pred_scores = torch.tensor(pred['scores'])
-
-        if len(gt_boxes) == 0:
-            false_positives += len(pred_boxes)
-            continue
-
-        if len(pred_boxes) == 0:
-            false_negatives += len(gt_boxes)
-            continue
-
-        ious = box_iou(gt_boxes, pred_boxes)
-        iou_max, iou_max_index = ious.max(dim=1)
-
-        for idx, (iou, pred_idx) in enumerate(zip(iou_max, iou_max_index)):
-            if iou >= iou_threshold and pred_scores[pred_idx] > 0:
-                true_positives += 1
-                pred_scores[pred_idx] = -1  # Mark this prediction as used
+    for pred, gt in zip(predictions, ground_truth_boxes):
+        if pred is None:
+            if len(gt) == 0:
+                continue
             else:
                 false_negatives += 1
+                continue
 
-        false_positives += (pred_scores > 0).sum().item()
+        iou = calculate_iou(pred, gt)
+        if iou >= threshold:
+            true_positives += 1
+        else:
+            false_positives += 1
 
     precision = true_positives / (true_positives + false_positives) if true_positives + false_positives > 0 else 0
     recall = true_positives / (true_positives + false_negatives) if true_positives + false_negatives > 0 else 0
@@ -215,51 +240,36 @@ def calculate_metrics(predictions, ground_truths, iou_threshold=0.5):
         'f1_score': f1_score
     }
 
-# Multilayer Perceptron Neural Network
-class MLP(nn.Module):
-    """Defines a simple Multilayer Perceptron with three linear layers and ReLU activations."""
-    def __init__(self, input_dim, hidden_dim, output_dim):
-        super(MLP, self).__init__()
-        self.layers = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, output_dim)
-        )
-
-    def forward(self, x):
-        return self.layers(x)
-
-# Initialize and Integrate MLP into the pipeline
-def initialize_mlp(input_dim, hidden_dim, output_dim):
-    """Initializes the MLP model with specified dimensions."""
-    mlp_model = MLP(input_dim, hidden_dim, output_dim)
-    return mlp_model
-
-# Main Execution Block
 if __name__ == '__main__':
-    os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'  # Environment variable to allow multiple OpenMP libraries
+    os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
     initpath = "/Users/Waza3ii/PycharmProjects/Human-Detection-in-Crowd-Images/CrowdHuman_Dataset"
     data = readdata(initpath)
-    images = readimages(data)
-    displayimages(images)
-    noisy_images = augment_images_with_noise(images)
-    displayimages(noisy_images)  # Display augmented images
-    colortransformations(images)
-    pixelhistogram(images)
-    image_size_vs_objects(images, data)
-    detection_model = load_detection_model()
-    body_detections_nms = detect_full_body_nms(images, detection_model)
-    ground_truth_boxes = [entry['gtboxes'] for entry in data[:len(images)]]
-    evaluation_results = calculate_metrics(body_detections_nms, ground_truth_boxes)
-    visualize_detections(images, body_detections_nms)
-    input_dim = 2048  # Assumed input feature size
-    hidden_dim = 512  # Hidden layer size
-    output_dim = 10  # Number of classes
+    images = readimages(data, initpath)
+    #displayimages(images)
+    #noisy_images = augment_images_with_noise(images)
+    #displayimages(noisy_images)
+    #colortransformations(images)
+    #pixelhistogram(images)
+    #image_size_vs_objects(images, data)
+
+    hidden_dim = 512
+    output_dim = 4
+
+    # Update input dimension based on the processed image size
+    input_dim = 3 * 224 * 224  # Assuming the images are resized to (224, 224)
+
+    # Initialize MLP model
     mlp_model = initialize_mlp(input_dim, hidden_dim, output_dim)
     mlp_model.eval()
-    dummy_input = torch.randn(1, input_dim)
-    output = mlp_model(dummy_input)
-    probabilities = nnF.softmax(output, dim=1)  # Convert logits to probabilities
-    print(probabilities)
+
+    # Extract ground truth boxes
+    ground_truth_boxes = [entry['gtboxes'] for entry in data[:len(images)]]
+
+    # Detect full body using MLP
+    body_detections_mlp = detect_full_body_mlp(images, mlp_model, ground_truth_boxes)
+
+    # Evaluate MLP performance
+    evaluation_results_mlp = evaluate_mlp_performance(body_detections_mlp, ground_truth_boxes)
+
+    print("MLP Performance Metrics:")
+    print(evaluation_results_mlp)

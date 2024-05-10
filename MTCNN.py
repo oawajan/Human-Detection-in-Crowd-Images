@@ -1,93 +1,232 @@
+import torch
+
 from Libraries import *
+from Evaluation import IoU
+
+
+def collate_fn(batch):
+    filtered_batch = [item for item in batch if item is not None]
+    images, labels = zip(*filtered_batch)
+    max_num_boxes = max(len(l) for l in labels)
+    padded_labels = []
+    for l in labels:
+        current_size = l.size(0)
+        if current_size < max_num_boxes:
+            pad_size = max_num_boxes - current_size
+            pad_tensor = torch.zeros(pad_size, *l.shape[1:])
+            padded_labels.append(torch.cat([l, pad_tensor], dim=0))
+        elif current_size > max_num_boxes:
+            padded_labels.append(l[:max_num_boxes])
+        else:
+            padded_labels.append(l)
+    images = torch.stack(images, dim=0)
+    padded_labels = torch.stack(padded_labels, dim=0)
+    print(len(images), len(padded_labels))
+    return images, padded_labels
+
+
+def post_process_detections(boxes, scores, score_threshold=0.5, iou_threshold=0.3):
+    # Ensure scores is a list if it's not already one
+    if isinstance(scores, torch.Tensor):
+        # If scores is a single tensor, use it directly. Assume it is 1D.
+        scores = scores.tolist()  # Convert to list if handling lists is easier in subsequent code
+    elif isinstance(scores, list):
+        # If scores is already a list of lists, flatten it (only if necessary)
+        scores = [score for sublist in scores for score in sublist] if scores and isinstance(scores[0], list) else scores
+
+    high_confidence_idxs = [i for i, score in enumerate(scores) if score > score_threshold]
+    filtered_boxes = [boxes[i] for i in high_confidence_idxs]
+    filtered_scores = [scores[i] for i in high_confidence_idxs]
+
+    # Apply NMS (assuming you have an NMS function defined)
+    final_idxs = nms(filtered_boxes, filtered_scores, iou_threshold=iou_threshold)
+    final_boxes = [filtered_boxes[i] for i in final_idxs]
+
+    return final_boxes
+
+
+def nms(boxes, scores, iou_threshold=0.5):
+    # Convert scores to a tensor if it's not already one
+    scores = torch.tensor(scores) if isinstance(scores, list) else scores
+
+    # Sort scores in descending order
+    idxs = torch.argsort(scores, descending=True)
+
+    keep = []
+    while idxs.numel() > 0:
+        current = idxs[0]
+        keep.append(current.item())
+        if idxs.numel() == 1:
+            break
+
+        # Calculate IoU of the current box with the rest
+        current_box = boxes[current]
+        remaining_boxes = boxes[idxs[1:]]
+        ious = iou(current_box, remaining_boxes)
+
+        # Filter out boxes with high IoU
+        idxs = idxs[1:][ious < iou_threshold]
+
+    return keep
+
+
+def iou(box1, boxes):
+    # Calculate Intersection Over Union between box1 and all other boxes
+    inter_x1 = torch.max(box1[0], boxes[:, 0])
+    inter_y1 = torch.max(box1[1], boxes[:, 1])
+    inter_x2 = torch.min(box1[2], boxes[:, 2])
+    inter_y2 = torch.min(box1[3], boxes[:, 3])
+
+    inter_area = torch.clamp(inter_x2 - inter_x1 + 1, min=0) * torch.clamp(inter_y2 - inter_y1 + 1, min=0)
+    box1_area = (box1[2] - box1[0] + 1) * (box1[3] - box1[1] + 1)
+    boxes_area = (boxes[:, 2] - boxes[:, 0] + 1) * (boxes[:, 3] - boxes[:, 1] + 1)
+
+    union_area = box1_area + boxes_area - inter_area
+    return inter_area / union_area
+
+
+def process_rnet_outputs(image, boxes, scores, score_threshold=0.5, resize_size=48):
+    # Apply score threshold
+    idxs = scores > score_threshold
+    filtered_boxes = boxes[idxs]
+    filtered_scores = scores[idxs]
+
+    # Apply NMS (you might need to implement or use an existing NMS function)
+    # final_idxs = nms(filtered_boxes, filtered_scores, iou_threshold=0.5)
+    # final_boxes = filtered_boxes[final_idxs]
+
+    # For simplicity, we'll continue with filtered_boxes assuming NMS is applied
+    final_boxes = filtered_boxes
+
+    # Crop and resize images
+    crops = []
+    for box in final_boxes:
+        cropped_img = image.crop((box[0], box[1], box[2], box[3]))  # assuming box format is [x1, y1, x2, y2]
+        resized_img = cropped_img.resize((resize_size, resize_size), Image.BILINEAR)
+        tensor_img = F.to_tensor(resized_img)
+        crops.append(tensor_img)
+
+    # Stack all crops to create a mini-batch
+    if crops:
+        batch = torch.stack(crops)
+    else:
+        batch = torch.empty(0, 3, resize_size, resize_size)  # handle the case of no boxes
+
+    return batch
+
 
 class ImageDataset(Dataset):
     def __init__(self, target_transform=None):
         self.init_path = f".\\CrowdHuman_Dataset\\"
-        self.image_labels = self.read_annotations()
+        self.image_data = self.read_annotations()
+        self.target_transform = target_transform
+        self.mtcnn = torchmtcnn
 
     def __len__(self):
-        return len(self.image_labels)
+        return len(self.image_data)
 
     def __getitem__(self, index):
-        image = self.load_image(self.image_labels[index])
-        return image
+        image, label = self.load_image_and_labels(index)
+        # if self.target_transform is not None:
+        #     label = self.target_transform(label)
+        # print(type(image), type(label))
+        # print(image.shape, label.shape)
+        return image, label
 
     def read_annotations(self) -> list:
-        datafile = []
-        annotations = []
-        with open(f"{self.init_path}annotation_train.odgt") as file:
+        data = []
+        with open(os.path.join(self.init_path, "annotation_train.odgt")) as file:
             for line in file:
-                datafile.append(json.loads(line))
-        return datafile
+                data.append(json.loads(line))
+        return data
 
-    def load_image(self, image_annotation):
-        ID = image_annotation['ID']
-        paths = (f"{self.init_path}CrowdHuman_train01\\Images\\{ID}.JPG",
-                 f"{self.init_path}CrowdHuman_train02\\Images\\{ID}.JPG",
-                 f"{self.init_path}CrowdHuman_train03\\Images\\{ID}.JPG")
-        try:
-            for path in paths:
-                img = read_image(path)
-                if img is not None:
-                    img = img.permute(1, 2, 0)
-                    plt.imshow(img)
-                    plt.title(ID)
-                    plt.show()
-                    print(type(img))
-                    return img
-        except Exception as e:
-            print(f"Error reading image from: {str(e)}")
+    def load_image_and_labels(self, index):
+        instance = self.image_data[index]
+        ID = instance["ID"]
+        img = None
+        for folder in ["Images", "Images 2", "Images 3"]:
+            img_path = os.path.join(self.init_path, folder, f"{ID}.JPG")
+            if os.path.exists(img_path):
+                img = Image.open(img_path)
+                img = img.resize((160, 160))
+                img = transforms.ToTensor()(img)
+                break
+        if img is None:
+            return None, None
+
+        # Extract labels
+        boxes = []
+        for people in instance["gtboxes"]:
+            box = people['hbox']
+            box.append(1)
+            boxes.append(box)
+
+        # Pad the list of labels
+        while len(boxes) < 200:
+            boxes.append([-1, -1, -1, -1, 0])
+
+        # Convert labels to tensor
+        label = torch.tensor(boxes)
+
+        return img, label
 
 
-def trainMTCNN(data, images) -> list:
+def trainMTCNN():
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = torchmtcnn(device=device)  # Assuming torchmtcnn creates an instance containing pnet, rnet, onet
+    p_model, r_model, o_model = model.pnet, model.rnet, model.onet
 
-    if (torch.cuda.is_available()):
-        print(f"GPU is available {torch.cuda.is_available()}, Version {torch.version.cuda}")
-        device = torch.device('cuda')
-    else:
-        print(f"Using CPU")
-        device = torch.device('cpu')
-    # initialize the MTCNN model and set it to use the GPU
-    model = torchmtcnn(device=device)
-    # print(model)
-    print("##################freeze pretrained model layers except  one#############################")
-    # freeze pretrained model layers
-    for name, param in torchmtcnn.named_parameters(model):
-        # print(f"name: {name}")
-        # print(f"param: {param}")
-        if 'pnet.conv1' not in name:
-            param.requires_grad = False
-        else:
+    # Assuming all networks should be trainable, setting requires_grad to True
+    for net in [p_model, r_model, o_model]:
+        for param in net.parameters():
             param.requires_grad = True
-    print("##################              load dataset                #############################")
+
     dataset = ImageDataset()
     dataloader = DataLoader(dataset, batch_size=32, shuffle=True, collate_fn=collate_fn)
 
-    # define optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=0.001)
+    loss_function = torch.nn.BCEWithLogitsLoss()  # Using BCEWithLogitsLoss for better numerical stability
 
-    # loss function
-    loss_function = nn.CrossEntropyLoss()
-
-    # epoch count
     epochs = 10
     for epoch in range(epochs):
-        for inputs, targets in dataloader:
-            inputs, targets = inputs.to(device), targets.to(device)
-            optimizer.zero_grad()
-            outputs = model(inputs)
-            loss = loss_function(outputs, targets)
+        for images, labels in dataloader:
+            images, labels = images.to(device), labels.to(device)
 
-            # Backward pass and optimize
+            # Forward pass through P-Net and R-Net
+            with torch.no_grad():  # No need to track gradients here
+                p_outputs = p_model(images)
+                p_tensor = F.avg_pool2d(p_outputs[0][:, 3, :, :], kernel_size=3, stride=3)
+                r_input = F.interpolate(p_tensor.unsqueeze(1).expand(-1, 3, -1, -1), size=(24, 24), mode='bilinear', align_corners=False)
+                batch_boxes, batch_scores = r_model(r_input)
+
+            final_detections = []
+            for image_idx, (boxes, scores) in enumerate(zip(batch_boxes, batch_scores)):
+                processed_boxes = post_process_detections(boxes, scores)
+                for box in processed_boxes:
+                    final_detections.append((image_idx, box))
+
+            o_inputs = []
+            for image_idx, bbox in final_detections:
+                if isinstance(bbox, torch.Tensor):
+                    bbox = bbox.tolist()  # Convert tensor to list if necessary
+                if isinstance(bbox, list) and len(bbox) == 4:
+                    x1, y1, x2, y2 = bbox
+                    cropped_image = images[image_idx][:, max(0, y1):min(images.shape[2], y2), max(0, x1):min(images.shape[3], x2)]
+                    resized_image = F.interpolate(cropped_image.unsqueeze(0), size=(48, 48), mode='bilinear', align_corners=False)
+                    o_inputs.append(resized_image.squeeze(0))
+
+            if o_inputs:
+                o_inputs = torch.stack(o_inputs).to(device)
+                o_outputs = o_model(o_inputs)
+                loss = loss_function(o_outputs, labels)
+            else:
+                print("Warning: No detections to process.")
+                loss = torch.tensor(0.0, device=device, requires_grad=True)
+
+            optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-        print(f"Epoch {epoch + 1}/{epochs}, Loss: {loss.item()}")
+            print(f"Epoch {epoch + 1}/{epochs}, Loss: {loss.item()}")
 
-def collate_fn(batch):
-    filtered_batch = []
-    for item in batch:
-        if item is not None:
-            print(type(item))
-            filtered_batch.append(item)
-    return default_collate(filtered_batch)
+    return o_model

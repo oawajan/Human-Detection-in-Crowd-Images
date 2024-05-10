@@ -121,11 +121,130 @@ def testtorch(images) -> list:
     return predictions
 
 
-def IoU(data, predictions) -> list:
+def IoU(data,predictions)->list:
+    results = []
+    print(data)
+    for i, prediction in enumerate(predictions):
+        print(prediction)
+        temp = []
+        for boxes in prediction:
+            max_IoU = 0
+            for box in range(len(data[i])):
+                x_intersection = max(boxes[0],
+                                     data[i][0])
+
+                y_intersection = max(boxes[1],
+                                     data[i][1])
+
+                w_intersection = min(boxes[0] + boxes[2],
+                                     data[i][0] + data[i][2]) - x_intersection
+
+                h_intersection = min(boxes[1] + boxes[3],
+                                     data[i][1] + data[i][3]) - y_intersection
+                area_intersection = max(0, w_intersection) * max(0, h_intersection)
+
+                area_union = (boxes[2] * boxes[3]
+                              + data[i][2] * data[i][3]
+                              - area_intersection)
+
+                if area_union == 0:
+                    IoU = 0
+                else:
+                    IoU = area_intersection / area_union
+
+                max_IoU = max(max_IoU, IoU)
+            results.append(temp)
+    print(results)
+    return results
+
+
+def IoU_metric(data, predictions) -> list:
+    true_positives = 0
+    false_positives = 0
+    false_negatives = 0
+    results = []
+
+    for i, prediction in enumerate(predictions):
+        temp = []
+        if len(data[i]['gtboxes']) == 0:
+            false_positives += len(prediction)
+            false_negatives += 0
+        elif len(prediction) == 0:
+            false_positives += 0
+            false_negatives += len(data[i]['gtboxes'])
+        else:
+            for boxes in prediction:
+                max_IoU = 0
+                for box in range(len(data[i]['gtboxes'])):
+                    x_intersection = max(int(boxes[0]),
+                                         data[i]['gtboxes'][box]['hbox'][0])
+
+                    y_intersection = max(int(boxes[1]),
+                                         data[i]['gtboxes'][box]['hbox'][1])
+
+                    w_intersection = min(int(boxes[0]) + int(boxes[2]),
+                                         data[i]['gtboxes'][box]['hbox'][0] + data[i]['gtboxes'][box]['hbox'][
+                                             2]) - x_intersection
+
+                    h_intersection = min(int(boxes[1]) + int(boxes[3]),
+                                         data[i]['gtboxes'][box]['hbox'][1] + data[i]['gtboxes'][box]['hbox'][
+                                             3]) - y_intersection
+                    area_intersection = max(0, w_intersection) * max(0, h_intersection)
+
+                    area_union = (int(boxes[2]) * int(boxes[3])
+                                  + data[i]['gtboxes'][box]['hbox'][2] * data[i]['gtboxes'][box]['hbox'][3]
+                                  - area_intersection)
+
+                    if area_union == 0:
+                        IoU = 0
+                    else:
+                        IoU = area_intersection / area_union
+
+                    max_IoU = max(max_IoU, IoU)
+                if max_IoU < 0.01:
+                    false_positives += 1
+                else:
+                    true_positives += 1
+
+            false_negatives += max(0, len(data[i]['gtboxes']) - true_positives)
+
+        results.append(temp)
+
+    precision = true_positives / (true_positives + false_positives) if true_positives + false_positives > 0 else 0
+    recall = true_positives / (true_positives + false_negatives) if true_positives + false_negatives > 0 else 0
+    f1_score = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0
+
+    return {
+        'true_positives': true_positives,
+        'false_positives': false_positives,
+        'false_negatives': false_negatives,
+        'precision': precision,
+        'recall': recall,
+        'f1_score': f1_score
+    }
+
+
+
+def IoU2(data, predictions) -> list:
+    true_positives = 0
+    false_positives = 0
+    false_negatives = 0
     i = 0
     results = []
     for prediction in predictions:
         temp = []
+        if len(data[i]['gtboxes']) == 0:
+            false_positives += len(predictions)
+
+        if len(predictions) == 0:
+            false_negatives += len(data[i]['gtboxes'])
+
+        if len(prediction) > len(data[i]['gtboxes']):
+            false_negatives += len(prediction) - len(data[i]['gtboxes'])
+
+        if len(prediction) < len(data[i]['gtboxes']):
+            false_positives += len(data[i]['gtboxes']) - len(prediction)
+
         for boxes in prediction:
             max_IoU = 0
             for box in range(len(data[i]['gtboxes'])):
@@ -147,13 +266,32 @@ def IoU(data, predictions) -> list:
                 area_union = (int(boxes[2]) * int(boxes[3])
                               + data[i]['gtboxes'][box]['hbox'][2] * data[i]['gtboxes'][box]['hbox'][3]
                               - area_intersection)
+
                 IoU = area_intersection / area_union
+
                 max_IoU = max(max_IoU, IoU)
+                if max_IoU < 0.2:
+                    true_positives += 1
+                else:
+                    false_negatives += 1
 
             temp.append(max_IoU)
             i += 1
         results.append(temp)
-    return results
+        print (results)
+    precision = true_positives / (true_positives + false_positives) if true_positives + false_positives > 0 else 0
+    recall = true_positives / (true_positives + false_negatives) if true_positives + false_negatives > 0 else 0
+    f1_score = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0
+
+    return {
+        'true_positives': true_positives,
+        'false_positives': false_positives,
+        'false_negatives': false_negatives,
+        'precision': precision,
+        'recall': recall,
+        'f1_score': f1_score
+    }
+#    return results
 
 
 def testdetection(data,images) -> None:

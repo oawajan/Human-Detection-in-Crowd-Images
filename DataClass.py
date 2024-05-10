@@ -12,7 +12,7 @@ def readdata(initpath, filename) -> list:
 
 def readimages(data, initpath) -> list:
     images = []
-    for i in range(min(5, len(data))):  # Process a maximum of 5 images for demonstration
+    for i in range(min(10, len(data))):  # Process a maximum of 5 images for demonstration
         ID = data[i]['ID']
         img = None
         for folder in ["Images", "Images 2", "Images 3"]:

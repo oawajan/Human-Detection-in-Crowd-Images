@@ -1,5 +1,6 @@
 from Libraries import *
 
+
 def load_detection_model():
     weights = FasterRCNN_ResNet50_FPN_Weights.DEFAULT
     model = fasterrcnn_resnet50_fpn(weights=weights)

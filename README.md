@@ -379,18 +379,27 @@ refine detection capabilities and address the complexities of crowded environmen
 
 5. Next Steps
 We will continue with the below points:
+
 o Further data cleaning is a top priority as some issues, like inconsistent data was not
 visible to us earlier.
+
 o Improve the results and accuracy of the body detection model.
+
 o Improve and fix model errors of the MTCNN face detection model.
+
 o We will perform some visualizations to compare our results based on different model
 parameters.
+
 o We have already incorporated a GPU in our project, we will target later on to run our
 model training loop on an AMD GPU.
+
 Our project consists of two major parts, face and body detection which allowed us to split the
 tasks to sub task per pair:
+
 o Face detection: Omar and Sepideh
+
 o Body detection: Rafael and Onyinye
+
 5. Code and Dataset
 We will share our code via GitHub as we have used it as our main collaboration platform for the project,
 as for the dataset it is quite large to be shared online, so please find the following link.

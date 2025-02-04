@@ -402,11 +402,15 @@ benchmark models against our dataset, with the knowledge at hand we will move fo
 enhancing the models by retraining them.
 
 References
+
 [1] CrowdHuman Dataset
+
 [2] Shao, S., Zhao, Z., Li, B., Xiao, T., Yu, G., Zhang, X., & Sun, J. (2018). Crowdhuman: A
 benchmark for detecting human in a crowd. arXiv 2018. arXiv preprint arXiv:1805..
+
 [3] Zhang, K., Xiong, F., Sun, P., Hu, L., Li, B., & Yu, G. (2019). Double Anchor R-CNN for
 Human Detection in a Crowd. ArXiv. /abs/1909.
+
 [4] [1604.02878] Joint Face Detection and Alignment using Multi-task Cascaded Convolutional Networks
 (arxiv.org)
 

@@ -403,7 +403,7 @@ enhancing the models by retraining them.
 
 References
 
-[1] CrowdHuman Dataset
+[1] CrowdHuman: A Benchmark for Detecting Human in a Crowd
 
 [2] Shao, S., Zhao, Z., Li, B., Xiao, T., Yu, G., Zhang, X., & Sun, J. (2018). Crowdhuman: A
 benchmark for detecting human in a crowd. arXiv 2018. arXiv preprint arXiv:1805..

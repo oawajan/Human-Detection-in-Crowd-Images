@@ -205,7 +205,7 @@ and prepare them for downstream tasks.
 
 ## MTCNN Pytorch model (Face Detection):
 
-We also started with implementing an MTCNN model, which is Multitask CNN model, with its architecture
+We also implemented an MTCNN model, which is Multitask CNN model, with its architecture
 made of 3 models each serving a different purpose, for steps of how this model works:
 
 ```
@@ -221,7 +221,7 @@ Below is a brief visual demonstration of the algorithm:
 For its implementation, we opted for the pytorch facenet MTCNN model, the same model we used below
 for testing against our data.
 
-The model is still underway in implementation. Below is the detailed model architecture.
+Below is the detailed model architecture.
 
 
 ```
